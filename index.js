@@ -1,9 +1,7 @@
 
 require('dotenv').config();
-const express = require('express');
-const fs = require('node:fs');
-const path = require('node:path');
 
+const express = require('express');
 const {
   Client,
   GatewayIntentBits,
@@ -24,32 +22,46 @@ const {
   CLIENT_ID,
   GUILD_ID,
   STORE_NAME = 'MAISIE STORE',
-  WELCOME_CHANNEL_ID = '',
+  STAFF_ROLE_ID = '',
   TICKET_CATEGORY_ID = '',
 } = process.env;
 
+// Check required configuration
 if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID) {
-  console.error('ERROR: Fill in DISCORD_TOKEN, CLIENT_ID and GUILD_ID in .env');
+  console.error(
+    'Missing DISCORD_TOKEN, CLIENT_ID, or GUILD_ID in Render Environment.'
+  );
   process.exit(1);
 }
 
-const settingsPath = path.join(__dirname, 'settings.json');
+// Render Free Web Service HTTP server
+const app = express();
 
-function loadSettings() {
-  try {
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-  } catch {
-    return {};
-  }
-}
+app.get('/', (req, res) => {
+  res.status(200).send(`${STORE_NAME} Discord Bot is running!`);
+});
 
-const settings = loadSettings();
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
 
-function saveSettings() {
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-}
+const server = app.listen(process.env.PORT || 10000, '0.0.0.0', () => {
+  console.log('HTTP server started.');
+});
 
-function storeEmbed(title, description) {
+// Discord client
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+  ],
+});
+
+// Store settings for welcome messages in memory.
+// These settings reset when the service restarts.
+const settings = new Map();
+
+function makeEmbed(title, description) {
   return new EmbedBuilder()
     .setColor(0x57B9FF)
     .setTitle(title)
@@ -58,13 +70,14 @@ function storeEmbed(title, description) {
     .setTimestamp();
 }
 
+// Slash commands
 const commands = [
   new SlashCommandBuilder()
     .setName('msay')
     .setDescription('Send a store announcement')
-    .addStringOption(o =>
-      o.setName('message')
-        .setDescription('Message to send')
+    .addStringOption(option =>
+      option.setName('message')
+        .setDescription('Announcement message')
         .setRequired(true)
         .setMaxLength(1900))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
@@ -72,31 +85,31 @@ const commands = [
   new SlashCommandBuilder()
     .setName('vouch')
     .setDescription('Post a customer vouch')
-    .addUserOption(o =>
-      o.setName('customer')
+    .addUserOption(option =>
+      option.setName('customer')
         .setDescription('Customer who gave the vouch')
         .setRequired(true))
-    .addStringOption(o =>
-      o.setName('product')
-        .setDescription('Product or service purchased')
+    .addStringOption(option =>
+      option.setName('product')
+        .setDescription('Product or service')
         .setRequired(true)
         .setMaxLength(200))
-    .addStringOption(o =>
-      o.setName('review')
+    .addStringOption(option =>
+      option.setName('review')
         .setDescription('Customer review')
         .setRequired(true)
         .setMaxLength(1000)),
 
   new SlashCommandBuilder()
     .setName('welcome')
-    .setDescription('Configure the automatic welcome message')
-    .addChannelOption(o =>
-      o.setName('channel')
-        .setDescription('Channel for welcome messages')
+    .setDescription('Configure automatic welcome messages')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Welcome channel')
         .addChannelTypes(ChannelType.GuildText)
         .setRequired(true))
-    .addStringOption(o =>
-      o.setName('message')
+    .addStringOption(option =>
+      option.setName('message')
         .setDescription('Use {user} to mention the new member')
         .setRequired(true)
         .setMaxLength(1000))
@@ -104,49 +117,46 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('proof')
-    .setDescription('Post a proof embed')
-    .addStringOption(o =>
-      o.setName('description')
+    .setDescription('Post order proof')
+    .addStringOption(option =>
+      option.setName('description')
         .setDescription('Describe the proof')
         .setRequired(true)
         .setMaxLength(1000))
-    .addAttachmentOption(o =>
-      o.setName('image')
+    .addAttachmentOption(option =>
+      option.setName('image')
         .setDescription('Optional proof screenshot'))
-    .addStringOption(o =>
-      o.setName('image_url')
+    .addStringOption(option =>
+      option.setName('image_url')
         .setDescription('Optional public image URL')),
 
   new SlashCommandBuilder()
     .setName('feed')
     .setDescription('Post customer feedback')
-    .addIntegerOption(o =>
-      o.setName('rating')
+    .addIntegerOption(option =>
+      option.setName('rating')
         .setDescription('Rating from 1 to 5')
         .setMinValue(1)
         .setMaxValue(5)
         .setRequired(true))
-    .addStringOption(o =>
-      o.setName('message')
-        .setDescription('Your feedback')
+    .addStringOption(option =>
+      option.setName('message')
+        .setDescription('Feedback message')
         .setRequired(true)
         .setMaxLength(1000)),
 
   new SlashCommandBuilder()
     .setName('ticket')
-    .setDescription('Create a private support ticket panel')
+    .setDescription('Post the private support ticket panel')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map(command => command.toJSON());
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-  ],
-});
-
+// Register commands to the configured server
 async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+
+  console.log('Registering commands for application:', CLIENT_ID);
+  console.log('Target Discord server:', GUILD_ID);
 
   await rest.put(
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
@@ -156,43 +166,44 @@ async function registerCommands() {
   console.log('All 6 slash commands registered successfully.');
 }
 
-client.once(Events.ClientReady, readyClient => {
-  console.log(`Bot online as ${readyClient.user.tag}`);
-});
-
+// Automatic welcome messages
 client.on(Events.GuildMemberAdd, async member => {
   try {
-    const config = settings[member.guild.id] || {};
-    const channelId = config.welcomeChannelId || WELCOME_CHANNEL_ID;
-    const message = config.welcomeMessage ||
-      'Welcome {user} to our server! Enjoy your stay.';
+    const config = settings.get(member.guild.id);
+    if (!config) return;
 
-    if (!channelId) return;
-
-    const channel = await member.guild.channels.fetch(channelId)
+    const channel = await member.guild.channels
+      .fetch(config.channelId)
       .catch(() => null);
 
     if (!channel || !channel.isTextBased()) return;
 
-    const safeMessage = message.replaceAll('{user}', member.toString());
+    const message = config.message.replaceAll(
+      '{user}',
+      `<@${member.id}>`
+    );
 
     await channel.send({
-      embeds: [
-        storeEmbed('Welcome to ' + STORE_NAME, safeMessage),
-      ],
+      embeds: [makeEmbed(`Welcome to ${STORE_NAME}!`, message)],
       allowedMentions: { users: [member.id] },
     });
   } catch (error) {
-    console.error('Welcome error:', error);
+    console.error('Welcome message error:', error);
   }
 });
 
+client.once(Events.ClientReady, readyClient => {
+  console.log(`Bot online as ${readyClient.user.tag}`);
+});
+
+// Handle commands and ticket buttons
 client.on(Events.InteractionCreate, async interaction => {
   try {
     if (interaction.isChatInputCommand()) {
-      const { commandName } = interaction;
+      const command = interaction.commandName;
 
-      if (commandName === 'msay') {
+      // /msay
+      if (command === 'msay') {
         const message = interaction.options.getString('message', true);
 
         await interaction.channel.send({
@@ -206,42 +217,43 @@ client.on(Events.InteractionCreate, async interaction => {
         });
       }
 
-      if (commandName === 'vouch') {
+      // /vouch
+      if (command === 'vouch') {
         const customer = interaction.options.getUser('customer', true);
         const product = interaction.options.getString('product', true);
         const review = interaction.options.getString('review', true);
 
-        const embed = storeEmbed('⭐ Customer Vouch', review)
+        const embed = makeEmbed('⭐ Customer Vouch', review)
           .addFields(
             { name: 'Customer', value: customer.tag },
             { name: 'Product / Service', value: product },
-            { name: 'Posted by', value: interaction.user.tag }
+            { name: 'Submitted by', value: interaction.user.tag }
           );
 
-        await interaction.reply({ embeds: [embed] });
-        return;
+        return interaction.reply({ embeds: [embed] });
       }
 
-      if (commandName === 'welcome') {
+      // /welcome
+      if (command === 'welcome') {
         const channel = interaction.options.getChannel('channel', true);
         const message = interaction.options.getString('message', true);
 
-        settings[interaction.guildId] = {
-          ...(settings[interaction.guildId] || {}),
-          welcomeChannelId: channel.id,
-          welcomeMessage: message,
-        };
+        settings.set(interaction.guildId, {
+          channelId: channel.id,
+          message,
+        });
 
-        saveSettings();
-
-        await interaction.reply({
-          content: `Welcome messages configured for ${channel}.\nUse {user} in the message to mention new members.`,
+        return interaction.reply({
+          content:
+            `Welcome messages configured for ${channel}.\n` +
+            'Use {user} in the message to mention new members.\n' +
+            'Note: this configuration resets if the bot restarts.',
           ephemeral: true,
         });
-        return;
       }
 
-      if (commandName === 'proof') {
+      // /proof
+      if (command === 'proof') {
         const description =
           interaction.options.getString('description', true);
         const attachment = interaction.options.getAttachment('image');
@@ -249,7 +261,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         if (attachment && imageUrl) {
           return interaction.reply({
-            content: 'Choose either an image attachment or an image URL, not both.',
+            content: 'Choose an attachment OR an image URL, not both.',
             ephemeral: true,
           });
         }
@@ -258,36 +270,36 @@ client.on(Events.InteractionCreate, async interaction => {
 
         if (url && !/^https?:\/\/\S+$/i.test(url)) {
           return interaction.reply({
-            content: 'Please provide a valid public HTTP or HTTPS image URL.',
+            content: 'Please provide a valid HTTP or HTTPS image URL.',
             ephemeral: true,
           });
         }
 
-        const embed = storeEmbed('📸 Order Proof', description)
+        const embed = makeEmbed('📸 Order Proof', description)
           .addFields({ name: 'Posted by', value: interaction.user.tag });
 
         if (url) embed.setImage(url);
 
-        await interaction.reply({ embeds: [embed] });
-        return;
+        return interaction.reply({ embeds: [embed] });
       }
 
-      if (commandName === 'feed') {
+      // /feed
+      if (command === 'feed') {
         const rating = interaction.options.getInteger('rating', true);
         const message = interaction.options.getString('message', true);
         const stars = '⭐'.repeat(rating) + '☆'.repeat(5 - rating);
 
-        const embed = storeEmbed('💬 Customer Feedback', message)
+        const embed = makeEmbed('💬 Customer Feedback', message)
           .addFields(
             { name: 'Rating', value: `${stars} (${rating}/5)` },
             { name: 'Customer', value: interaction.user.tag }
           );
 
-        await interaction.reply({ embeds: [embed] });
-        return;
+        return interaction.reply({ embeds: [embed] });
       }
 
-      if (commandName === 'ticket') {
+      // /ticket
+      if (command === 'ticket') {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId('store_ticket_open')
@@ -298,28 +310,30 @@ client.on(Events.InteractionCreate, async interaction => {
 
         await interaction.channel.send({
           embeds: [
-            storeEmbed(
+            makeEmbed(
               `${STORE_NAME} — Support`,
-              'Need help with an order or product? Click below to open a private support ticket.'
+              'Need help with an order? Click below to open a private ticket.'
             ),
           ],
           components: [row],
         });
 
-        await interaction.reply({
+        return interaction.reply({
           content: 'Ticket panel posted!',
           ephemeral: true,
         });
       }
     }
 
+    // Ticket buttons
     if (interaction.isButton()) {
+      // Open ticket
       if (interaction.customId === 'store_ticket_open') {
         await interaction.deferReply({ ephemeral: true });
 
         const guild = interaction.guild;
         if (!guild) {
-          return interaction.editReply('This button must be used in a server.');
+          return interaction.editReply('Use this button inside a server.');
         }
 
         const existing = guild.channels.cache.find(channel =>
@@ -357,26 +371,53 @@ client.on(Events.InteractionCreate, async interaction => {
           },
         ];
 
-        const ticketConfig = settings[guild.id] || {};
-        const categoryId = ticketConfig.ticketCategoryId || TICKET_CATEGORY_ID;
-
-        if (categoryId) {
-          const category = await guild.channels.fetch(categoryId)
+        // Give the configured staff role access to tickets
+        if (STAFF_ROLE_ID) {
+          const staffRole = await guild.roles
+            .fetch(STAFF_ROLE_ID)
             .catch(() => null);
 
-          if (category?.type === ChannelType.GuildCategory) {
-            // The channel will be created under this category.
+          if (staffRole) {
+            overwrites.push({
+              id: staffRole.id,
+              allow: [
+                PermissionFlagsBits.ViewChannel,
+                PermissionFlagsBits.SendMessages,
+                PermissionFlagsBits.ReadMessageHistory,
+                PermissionFlagsBits.AttachFiles,
+                PermissionFlagsBits.EmbedLinks,
+              ],
+            });
+          } else {
+            console.warn('STAFF_ROLE_ID was not found in this server.');
           }
         }
 
+        let parentId;
+
+        if (TICKET_CATEGORY_ID) {
+          const category = await guild.channels
+            .fetch(TICKET_CATEGORY_ID)
+            .catch(() => null);
+
+          if (category?.type === ChannelType.GuildCategory) {
+            parentId = category.id;
+          } else {
+            console.warn('TICKET_CATEGORY_ID is not a valid category.');
+          }
+        }
+
+        const safeName = interaction.user.username
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/-+/g, '-')
+          .slice(0, 80) || 'customer';
+
         const ticket = await guild.channels.create({
-          name: `ticket-${interaction.user.username}`
-            .toLowerCase()
-            .replace(/[^a-z0-9-]/g, '-')
-            .slice(0, 90),
+          name: `ticket-${safeName}`,
           type: ChannelType.GuildText,
           topic: `store-ticket:${interaction.user.id}`,
-          ...(categoryId ? { parent: categoryId } : {}),
+          ...(parentId ? { parent: parentId } : {}),
           permissionOverwrites: overwrites,
         });
 
@@ -389,9 +430,9 @@ client.on(Events.InteractionCreate, async interaction => {
         );
 
         await ticket.send({
-          content: `${interaction.user} Welcome! Please describe your order or issue.`,
+          content: `<@${interaction.user.id}> Welcome! Describe your order or issue here.`,
           embeds: [
-            storeEmbed('🎫 Support Ticket', 'A staff member will assist you soon.'),
+            makeEmbed('🎫 Support Ticket', 'A staff member will assist you soon.'),
           ],
           components: [closeRow],
           allowedMentions: { users: [interaction.user.id] },
@@ -400,28 +441,31 @@ client.on(Events.InteractionCreate, async interaction => {
         return interaction.editReply(`Your ticket has been created: ${ticket}`);
       }
 
+      // Close ticket
       if (interaction.customId === 'store_ticket_close') {
-        const isTicket = interaction.channel?.topic?.startsWith('store-ticket:');
+        const channel = interaction.channel;
+        const prefix = 'store-ticket:';
 
-        if (!isTicket) {
+        if (!channel?.topic?.startsWith(prefix)) {
           return interaction.reply({
             content: 'This is not a store ticket.',
             ephemeral: true,
           });
         }
 
-        const ticketOwnerId = interaction.channel.topic.slice(
-          'store-ticket:'.length
+        const ownerId = channel.topic.slice(prefix.length);
+        const isOwner = interaction.user.id === ownerId;
+        const isStaff = Boolean(
+          STAFF_ROLE_ID &&
+          interaction.member?.roles?.cache?.has(STAFF_ROLE_ID)
         );
-
-        const isOwner = interaction.user.id === ticketOwnerId;
         const canManage = interaction.memberPermissions?.has(
           PermissionFlagsBits.ManageChannels
         );
 
-        if (!isOwner && !canManage) {
+        if (!isOwner && !isStaff && !canManage) {
           return interaction.reply({
-            content: 'Only the ticket owner or staff with Manage Channels can close this ticket.',
+            content: 'Only the ticket owner or authorized staff can close this ticket.',
             ephemeral: true,
           });
         }
@@ -429,31 +473,36 @@ client.on(Events.InteractionCreate, async interaction => {
         await interaction.reply('Ticket closing in 3 seconds.');
 
         setTimeout(() => {
-          interaction.channel.delete('Store support ticket closed')
-            .catch(console.error);
+          channel.delete('Store support ticket closed').catch(console.error);
         }, 3000);
       }
     }
   } catch (error) {
     console.error('Interaction error:', error);
 
-    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: 'Something went wrong. Check the bot console for details.',
-        ephemeral: true,
-      }).catch(() => {});
-    } else if (interaction.isRepliable() && interaction.deferred) {
-      await interaction.editReply('Something went wrong. Check the bot console for details.')
-        .catch(() => {});
+    if (interaction.isRepliable()) {
+      const message = 'An error occurred. Check the Render logs for details.';
+
+      if (interaction.deferred) {
+        await interaction.editReply(message).catch(() => {});
+      } else if (!interaction.replied) {
+        await interaction.reply({
+          content: message,
+          ephemeral: true,
+        }).catch(() => {});
+      }
     }
   }
 });
 
+// Start bot
 (async () => {
   try {
     await registerCommands();
     await client.login(DISCORD_TOKEN);
   } catch (error) {
     console.error('Bot startup failed:', error);
+    server.close();
+    process.exit(1);
   }
 })();
