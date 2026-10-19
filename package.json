@@ -1,0 +1,15 @@
+
+{
+  "name": "maisie-store-bot",
+  "version": "1.0.0",
+  "description": "MAISIE STORE Discord Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
