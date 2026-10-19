@@ -26,19 +26,16 @@ const {
   TICKET_CATEGORY_ID = '',
 } = process.env;
 
-// Check required configuration
 if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID) {
-  console.error(
-    'Missing DISCORD_TOKEN, CLIENT_ID, or GUILD_ID in Render Environment.'
-  );
+  console.error('Missing DISCORD_TOKEN, CLIENT_ID, or GUILD_ID.');
   process.exit(1);
 }
 
-// Render Free Web Service HTTP server
+// HTTP server for Render
 const app = express();
 
 app.get('/', (req, res) => {
-  res.status(200).send(`${STORE_NAME} Discord Bot is running!`);
+  res.status(200).send(`${STORE_NAME} Discord bot is running.`);
 });
 
 app.get('/health', (req, res) => {
@@ -49,7 +46,7 @@ const server = app.listen(process.env.PORT || 10000, '0.0.0.0', () => {
   console.log('HTTP server started.');
 });
 
-// Discord client
+// Discord bot
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -57,9 +54,89 @@ const client = new Client({
   ],
 });
 
-// Store settings for welcome messages in memory.
-// These settings reset when the service restarts.
+// In-memory welcome settings
 const settings = new Map();
+
+// Slash commands
+const commands = [
+  new SlashCommandBuilder()
+    .setName('msay')
+    .setDescription('Send a store announcement')
+    .addStringOption(o =>
+      o.setName('message')
+        .setDescription('Announcement message')
+        .setMaxLength(1900)
+        .setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('vouch')
+    .setDescription('Post a customer vouch')
+    .addUserOption(o =>
+      o.setName('customer')
+        .setDescription('Customer who gave the vouch')
+        .setRequired(true))
+    .addStringOption(o =>
+      o.setName('product')
+        .setDescription('Product or service')
+        .setMaxLength(200)
+        .setRequired(true))
+    .addStringOption(o =>
+      o.setName('review')
+        .setDescription('Customer review')
+        .setMaxLength(1000)
+        .setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('welcome')
+    .setDescription('Configure welcome messages')
+    .addChannelOption(o =>
+      o.setName('channel')
+        .setDescription('Welcome channel')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(true))
+    .addStringOption(o =>
+      o.setName('message')
+        .setDescription('Use {user} to mention the member')
+        .setMaxLength(1000)
+        .setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('proof')
+    .setDescription('Post order proof')
+    .addStringOption(o =>
+      o.setName('description')
+        .setDescription('Proof description')
+        .setMaxLength(1000)
+        .setRequired(true))
+    .addAttachmentOption(o =>
+      o.setName('image')
+        .setDescription('Optional screenshot'))
+    .addStringOption(o =>
+      o.setName('image_url')
+        .setDescription('Optional public image URL')),
+
+  new SlashCommandBuilder()
+    .setName('feed')
+    .setDescription('Post customer feedback')
+    .addIntegerOption(o =>
+      o.setName('rating')
+        .setDescription('Rating from 1 to 5')
+        .setMinValue(1)
+        .setMaxValue(5)
+        .setRequired(true))
+    .addStringOption(o =>
+      o.setName('message')
+        .setDescription('Feedback message')
+        .setMaxLength(1000)
+        .setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('ticket')
+    .setDescription('Post a private support ticket panel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+].map(c => c.toJSON());
 
 function makeEmbed(title, description) {
   return new EmbedBuilder()
@@ -70,88 +147,6 @@ function makeEmbed(title, description) {
     .setTimestamp();
 }
 
-// Slash commands
-const commands = [
-  new SlashCommandBuilder()
-    .setName('msay')
-    .setDescription('Send a store announcement')
-    .addStringOption(option =>
-      option.setName('message')
-        .setDescription('Announcement message')
-        .setRequired(true)
-        .setMaxLength(1900))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-
-  new SlashCommandBuilder()
-    .setName('vouch')
-    .setDescription('Post a customer vouch')
-    .addUserOption(option =>
-      option.setName('customer')
-        .setDescription('Customer who gave the vouch')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('product')
-        .setDescription('Product or service')
-        .setRequired(true)
-        .setMaxLength(200))
-    .addStringOption(option =>
-      option.setName('review')
-        .setDescription('Customer review')
-        .setRequired(true)
-        .setMaxLength(1000)),
-
-  new SlashCommandBuilder()
-    .setName('welcome')
-    .setDescription('Configure automatic welcome messages')
-    .addChannelOption(option =>
-      option.setName('channel')
-        .setDescription('Welcome channel')
-        .addChannelTypes(ChannelType.GuildText)
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('message')
-        .setDescription('Use {user} to mention the new member')
-        .setRequired(true)
-        .setMaxLength(1000))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-
-  new SlashCommandBuilder()
-    .setName('proof')
-    .setDescription('Post order proof')
-    .addStringOption(option =>
-      option.setName('description')
-        .setDescription('Describe the proof')
-        .setRequired(true)
-        .setMaxLength(1000))
-    .addAttachmentOption(option =>
-      option.setName('image')
-        .setDescription('Optional proof screenshot'))
-    .addStringOption(option =>
-      option.setName('image_url')
-        .setDescription('Optional public image URL')),
-
-  new SlashCommandBuilder()
-    .setName('feed')
-    .setDescription('Post customer feedback')
-    .addIntegerOption(option =>
-      option.setName('rating')
-        .setDescription('Rating from 1 to 5')
-        .setMinValue(1)
-        .setMaxValue(5)
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('message')
-        .setDescription('Feedback message')
-        .setRequired(true)
-        .setMaxLength(1000)),
-
-  new SlashCommandBuilder()
-    .setName('ticket')
-    .setDescription('Post the private support ticket panel')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-].map(command => command.toJSON());
-
-// Register commands to the configured server
 async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
 
@@ -166,7 +161,29 @@ async function registerCommands() {
   console.log('All 6 slash commands registered successfully.');
 }
 
-// Automatic welcome messages
+// Connection diagnostics
+client.once(Events.ClientReady, readyClient => {
+  console.log(`Bot online as ${readyClient.user.tag}`);
+  console.log('Discord gateway connected:', readyClient.ws.status);
+});
+
+client.on('shardDisconnect', (event, shardId) => {
+  console.log(`Discord disconnected. Shard ${shardId}, code ${event.code}`);
+});
+
+client.on('shardReconnecting', shardId => {
+  console.log(`Discord reconnecting. Shard ${shardId}`);
+});
+
+client.on('shardError', (error, shardId) => {
+  console.error(`Discord gateway error on shard ${shardId}:`, error);
+});
+
+client.on('error', error => {
+  console.error('Discord client error:', error);
+});
+
+// Welcome messages
 client.on(Events.GuildMemberAdd, async member => {
   try {
     const config = settings.get(member.guild.id);
@@ -192,17 +209,12 @@ client.on(Events.GuildMemberAdd, async member => {
   }
 });
 
-client.once(Events.ClientReady, readyClient => {
-  console.log(`Bot online as ${readyClient.user.tag}`);
-});
-
-// Handle commands and ticket buttons
+// Commands and ticket buttons
 client.on(Events.InteractionCreate, async interaction => {
   try {
     if (interaction.isChatInputCommand()) {
       const command = interaction.commandName;
 
-      // /msay
       if (command === 'msay') {
         const message = interaction.options.getString('message', true);
 
@@ -217,7 +229,6 @@ client.on(Events.InteractionCreate, async interaction => {
         });
       }
 
-      // /vouch
       if (command === 'vouch') {
         const customer = interaction.options.getUser('customer', true);
         const product = interaction.options.getString('product', true);
@@ -233,7 +244,6 @@ client.on(Events.InteractionCreate, async interaction => {
         return interaction.reply({ embeds: [embed] });
       }
 
-      // /welcome
       if (command === 'welcome') {
         const channel = interaction.options.getChannel('channel', true);
         const message = interaction.options.getString('message', true);
@@ -244,24 +254,19 @@ client.on(Events.InteractionCreate, async interaction => {
         });
 
         return interaction.reply({
-          content:
-            `Welcome messages configured for ${channel}.\n` +
-            'Use {user} in the message to mention new members.\n' +
-            'Note: this configuration resets if the bot restarts.',
+          content: `Welcome messages configured for ${channel}. They reset when the bot restarts.`,
           ephemeral: true,
         });
       }
 
-      // /proof
       if (command === 'proof') {
-        const description =
-          interaction.options.getString('description', true);
+        const description = interaction.options.getString('description', true);
         const attachment = interaction.options.getAttachment('image');
         const imageUrl = interaction.options.getString('image_url');
 
         if (attachment && imageUrl) {
           return interaction.reply({
-            content: 'Choose an attachment OR an image URL, not both.',
+            content: 'Choose an image attachment OR an image URL, not both.',
             ephemeral: true,
           });
         }
@@ -283,7 +288,6 @@ client.on(Events.InteractionCreate, async interaction => {
         return interaction.reply({ embeds: [embed] });
       }
 
-      // /feed
       if (command === 'feed') {
         const rating = interaction.options.getInteger('rating', true);
         const message = interaction.options.getString('message', true);
@@ -298,7 +302,6 @@ client.on(Events.InteractionCreate, async interaction => {
         return interaction.reply({ embeds: [embed] });
       }
 
-      // /ticket
       if (command === 'ticket') {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -325,15 +328,13 @@ client.on(Events.InteractionCreate, async interaction => {
       }
     }
 
-    // Ticket buttons
     if (interaction.isButton()) {
-      // Open ticket
       if (interaction.customId === 'store_ticket_open') {
         await interaction.deferReply({ ephemeral: true });
 
         const guild = interaction.guild;
         if (!guild) {
-          return interaction.editReply('Use this button inside a server.');
+          return interaction.editReply('Use this button in a server.');
         }
 
         const existing = guild.channels.cache.find(channel =>
@@ -371,15 +372,12 @@ client.on(Events.InteractionCreate, async interaction => {
           },
         ];
 
-        // Give the configured staff role access to tickets
         if (STAFF_ROLE_ID) {
-          const staffRole = await guild.roles
-            .fetch(STAFF_ROLE_ID)
-            .catch(() => null);
+          const role = await guild.roles.fetch(STAFF_ROLE_ID).catch(() => null);
 
-          if (staffRole) {
+          if (role) {
             overwrites.push({
-              id: staffRole.id,
+              id: role.id,
               allow: [
                 PermissionFlagsBits.ViewChannel,
                 PermissionFlagsBits.SendMessages,
@@ -389,11 +387,11 @@ client.on(Events.InteractionCreate, async interaction => {
               ],
             });
           } else {
-            console.warn('STAFF_ROLE_ID was not found in this server.');
+            console.warn('STAFF_ROLE_ID was not found.');
           }
         }
 
-        let parentId;
+        let parent;
 
         if (TICKET_CATEGORY_ID) {
           const category = await guild.channels
@@ -401,7 +399,7 @@ client.on(Events.InteractionCreate, async interaction => {
             .catch(() => null);
 
           if (category?.type === ChannelType.GuildCategory) {
-            parentId = category.id;
+            parent = category.id;
           } else {
             console.warn('TICKET_CATEGORY_ID is not a valid category.');
           }
@@ -417,7 +415,7 @@ client.on(Events.InteractionCreate, async interaction => {
           name: `ticket-${safeName}`,
           type: ChannelType.GuildText,
           topic: `store-ticket:${interaction.user.id}`,
-          ...(parentId ? { parent: parentId } : {}),
+          ...(parent ? { parent } : {}),
           permissionOverwrites: overwrites,
         });
 
@@ -441,19 +439,17 @@ client.on(Events.InteractionCreate, async interaction => {
         return interaction.editReply(`Your ticket has been created: ${ticket}`);
       }
 
-      // Close ticket
       if (interaction.customId === 'store_ticket_close') {
         const channel = interaction.channel;
-        const prefix = 'store-ticket:';
 
-        if (!channel?.topic?.startsWith(prefix)) {
+        if (!channel?.topic?.startsWith('store-ticket:')) {
           return interaction.reply({
             content: 'This is not a store ticket.',
             ephemeral: true,
           });
         }
 
-        const ownerId = channel.topic.slice(prefix.length);
+        const ownerId = channel.topic.slice('store-ticket:'.length);
         const isOwner = interaction.user.id === ownerId;
         const isStaff = Boolean(
           STAFF_ROLE_ID &&
@@ -473,7 +469,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await interaction.reply('Ticket closing in 3 seconds.');
 
         setTimeout(() => {
-          channel.delete('Store support ticket closed').catch(console.error);
+          channel.delete('Support ticket closed').catch(console.error);
         }, 3000);
       }
     }
@@ -481,7 +477,7 @@ client.on(Events.InteractionCreate, async interaction => {
     console.error('Interaction error:', error);
 
     if (interaction.isRepliable()) {
-      const message = 'An error occurred. Check the Render logs for details.';
+      const message = 'An error occurred. Check Render logs for details.';
 
       if (interaction.deferred) {
         await interaction.editReply(message).catch(() => {});
